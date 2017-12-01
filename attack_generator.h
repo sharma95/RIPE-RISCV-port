@@ -5,7 +5,7 @@ typedef int boolean;
 enum booleans {FALSE = 0, TRUE};
 
 // our implementation currently only works for direct overflows
-enum techniques {DIRECT=100};
+enum techniques {DIRECT=100, INDIRECT};
 
 // our implementation currently only takes into account return
 // address overflows
@@ -27,6 +27,7 @@ typedef struct char_payload CHARPAYLOAD;
 struct char_payload {
   size_t size;
   void* overflow_ptr;
+  void* target_addr;
   void* buffer;
   void* contents;
 };
