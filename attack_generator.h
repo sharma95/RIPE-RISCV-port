@@ -1,6 +1,8 @@
 #ifndef ATTACK_GENERATOR_H
 #define ATTACK_GENERATOR_H
 
+#define BUFFER_SIZE 1024
+
 typedef int boolean;
 enum booleans {FALSE = 0, TRUE};
 
@@ -13,10 +15,15 @@ enum code_ptrs {RET_ADDR=300, STRUCT_FUNC_PTR_STACK, STRUCT_FUNC_PTR_HEAP, STRUC
 
 // our implementation currently only takes into account stack
 // buffer overflows
-enum locations {STACK=400, HEAP, DATA};
+enum locations {STACK=400, HEAP, DATA, BSS};
 
 // our implementation currently only uses memcpy
 enum functions {MEMCPY = 500};
+
+struct pointer_struct {
+  char buf[BUFFER_SIZE];
+  int* mem_ptr; 
+};
 
 struct attackme {
   char buffer[256];

