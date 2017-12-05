@@ -13,7 +13,7 @@ enum techniques {DIRECT=100, INDIRECT};
 
 // our implementation currently only takes into account return
 // address overflows
-enum code_ptrs {RET_ADDR=300, STRUCT_FUNC_PTR_STACK, STRUCT_FUNC_PTR_HEAP, STRUCT_FUNC_PTR_DATA, STRUCT_FUNC_PTR_BSS, FUNC_PTR_STACK_PARAM};
+enum code_ptrs {RET_ADDR=300, STRUCT_FUNC_PTR_STACK, STRUCT_FUNC_PTR_HEAP, STRUCT_FUNC_PTR_DATA, STRUCT_FUNC_PTR_BSS, FUNC_PTR_STACK_PARAM, LONGJMP_BUF_STACK, LONGJMP_BUF_HEAP, LONGJMP_BUF_DATA, LONGJMP_BUF_BSS, LONGJMP_BUF_STACK_PARAM};
 
 // our implementation currently only takes into account stack
 // buffer overflows
