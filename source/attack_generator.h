@@ -8,19 +8,13 @@
 typedef int boolean;
 enum booleans {FALSE = 0, TRUE};
 
-// our implementation currently only works for direct overflows
 enum techniques {DIRECT=100, INDIRECT};
 
-// our implementation currently only takes into account return
-// address overflows
 enum code_ptrs {RET_ADDR=300, STRUCT_FUNC_PTR_STACK, STRUCT_FUNC_PTR_HEAP, STRUCT_FUNC_PTR_DATA, STRUCT_FUNC_PTR_BSS, FUNC_PTR_STACK_PARAM, LONGJMP_BUF_STACK, LONGJMP_BUF_HEAP, LONGJMP_BUF_DATA, LONGJMP_BUF_BSS, LONGJMP_BUF_STACK_PARAM};
 
-// our implementation currently only takes into account stack
-// buffer overflows
 enum locations {STACK=400, HEAP, DATA, BSS};
 
-// our implementation currently only uses memcpy
-enum functions {MEMCPY = 500};
+enum functions {MEMCPY = 500, STRCPY, STRNCPY, SPRINTF, SNPRINTF, STRCAT, STRNCAT, SSCANF};
 /*enum functions     {MEMCPY=500, STRCPY, STRNCPY, SPRINTF, SNPRINTF,
                     STRCAT, STRNCAT, SSCANF, FSCANF, HOMEBREW};
 */
@@ -84,7 +78,7 @@ int main(int argc, char **argv);
 void perform_attack(void (*stack_func_ptr_param)(),
                     jmp_buf stack_jmp_buf_param);
 
-void generate_payload();
+char* generate_payload();
 boolean is_attack_possible();
 
 void set_technique(char *choice);

