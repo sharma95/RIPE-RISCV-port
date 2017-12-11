@@ -4,7 +4,7 @@
 
 #Depending on how you test your system you may want to comment, or uncomment
 #the following
-CFLAGS=-fno-stack-protector -z execstack
+CFLAGS=-fno-stack-protector -g -z execstack
 
 # RISCV GCC compiler - TODO: auto-detect the right gcc or make it an input
 CC=../riscv-tools-install/multilib/bin/riscv64-unknown-elf-gcc
