@@ -29,7 +29,7 @@ funcs = ["memcpy"]
 
 
 locations = ["stack", "heap", "bss", "data"]
-attacks = ["createfile"]#, "returnintolibc", "rop"]
+attacks = ["createfile", "rop"]
 
 techniques = []
 repeat_times = 0
@@ -70,8 +70,7 @@ for attack in attacks:
 						i += 1
 
 						os.system("rm /tmp/ripe_log")
-						cmdline = spike_path + " pk ./build/attack_generator -t "+tech+" -c " + ptr + "  -l " + loc +" -f " + func + ">> /tmp/ripe_log 2>&1"
-						#cmdline = "./build/ripe_attack_generator -t "+tech+" -i "+attack+" -c " + ptr + "  -l " + loc +" -f " + func + " > /tmp/ripe_log 2>&1"
+						cmdline = spike_path + " pk ./build/attack_generator -t "+tech+" -i "+attack+" -c " + ptr + "  -l " + loc +" -f " + func + " > /tmp/ripe_log 2>&1"
 						os.system(cmdline)
 						log = open("/tmp/ripe_log","r")
 		
@@ -84,7 +83,7 @@ for attack in attacks:
 
 						if os.path.exists("urhacked"):
 							s_attempts += 1		
-							os.system("rm urhacked")
+							os.system("rm -f urhacked")
 
 
 					if attack_possible == 0:

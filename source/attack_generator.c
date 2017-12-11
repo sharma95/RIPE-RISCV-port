@@ -196,10 +196,6 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
   struct attackme* heap_struct = (struct attackme*) malloc(sizeof(struct attackme));
   heap_struct->func_ptr = &fooz;
 
-  //attack.technique = INDIRECT;
-  //attack.code_ptr = LONGJMP_BUF_DATA;
-  //attack.location = STACK;
-
   static struct attackme bss_struct = {"AAAAAAAA", &fooz};
 
   static struct pointer_struct bss_indirect = {"AAAAAAA", NULL};
