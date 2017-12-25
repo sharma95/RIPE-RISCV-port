@@ -84,7 +84,7 @@ for attack in attacks:
 
 						if os.path.exists("urhacked"):
 							s_attempts += 1		
-							os.system("rm urhacked")
+							os.system("rm -f urhacked")
 
 
 					if attack_possible == 0:

